@@ -1,81 +1,49 @@
-# System Architecture
+# Arquitectura e interfaces
 
-## 1. Purpose
+## Paquetes
 
-The workspace combines mobile-robot autonomy, spatial perception and a custom mechanism into one ROS 2 development environment. The architecture is deliberately modular: mapping, exploration, navigation, mission annotation and mechanism control can be developed independently and then composed for an integrated run.
+Los paquetes propios estÃ¡n en `src/`; el cÃ³digo externo se conserva en `external/` y queda fuera de la bÃºsqueda de colcon.
 
-## 2. Runtime domains
-
-### 2.1 State estimation and mapping
-
-Inputs:
-
-- TurtleBot3 odometry;
-- the TF tree;
-- 2D LaserScan data;
-- optional scan normalization through `laser_scan_adjuster`.
-
-SLAM Toolbox consumes odometry, TF and laser data to maintain an occupancy grid. The resulting map is the shared world representation used by exploration, navigation and RViz.
-
-### 2.2 Exploration and navigation
-
-The repository includes two exploration implementations:
-
-- `explore_cpp` for a compiled C++ path with ROS 2 actions and OpenCV/Eigen support;
-- `turtlebot3_explore` for a Python path that is easier to inspect and iterate.
-
-Both are mission-level clients. They inspect the current map, select candidate exploration goals and delegate collision-aware motion to Nav2. Nav2 remains responsible for planning, local control and recovery behavior.
-
-`turtlebot3_poi_navigation` complements exploration with operator-defined named destinations. This separates repeatable semantic navigation from unknown-space exploration.
-
-### 2.3 HAZMAT perception and map annotation
-
-The camera detector is maintained as the external `HAZMAT_Detection` submodule. First-party ROS 2 integration turns detections into mission information through `hazmat_marker`, allowing hazardous-material observations to appear as spatial annotations in RViz alongside the occupancy map.
-
-This division keeps model inference separate from map and visualization responsibilities.
-
-### 2.4 Custom mechanism support
-
-`motor_position_controller` publishes bounded position references for two mechanism axes. `joint_state_publisher_custom` publishes the associated state representation used by robot visualization and downstream tooling.
-
-These packages are intentionally independent from the mobile-base autonomy stack so the mechanism can be tested without running SLAM or Nav2.
-
-## 3. Package boundaries
-
-| Package | Owns | Does not own |
-|---|---|---|
-| `laser_scan_adjuster` | Scan sample normalization and republishing | Mapping or localization |
-| `explore_cpp` | C++ exploration mission logic | Low-level trajectory control |
-| `turtlebot3_explore` | Python exploration mission logic | Costmaps and controller execution |
-| `turtlebot3_poi_navigation` | Named goals and navigation requests | Map generation |
-| `hazmat_marker` | Mission annotation in RViz | Neural-network inference |
-| `motor_position_controller` | Operator position references | Hardware motor drivers |
-| `joint_state_publisher_custom` | Joint-state representation | Position-command generation |
-
-## 4. Data-flow contracts
-
-```text
-/scan ──> laser_scan_adjuster ──> /adjusted_scan
-odom + TF + scan ──> SLAM Toolbox ──> occupancy map
-occupancy map + TF ──> exploration node ──> Nav2 goal
-named POI ──> POI manager ──> Nav2 goal
-camera detection ──> hazmat_marker ──> RViz marker
-operator input ──> motor position topics ──> custom joint-state visualization
+```mermaid
+flowchart LR
+  L[LiDAR y odometrÃ­a] --> S[SLAM Toolbox o AMCL]
+  S --> M[Mapa y TF]
+  M --> E[Explorador Python o C++]
+  P[Administrador de POIs] --> N[Nav2]
+  E --> N
+  N --> B[Base TurtleBot3]
+  C[Detector externo] --> H[Anotador HAZMAT]
+  M --> H
+  H --> R[RViz]
+  U[Entrada del operador] --> A[Referencias acotadas por URDF]
+  A --> J[VisualizaciÃ³n de articulaciones]
 ```
 
-Topic names outside the explicitly documented adapters may vary across TurtleBot3 and Nav2 launch configurations. The operational guide therefore treats launch files and source package parameters as the source of truth.
+## NavegaciÃ³n
 
-## 5. Design characteristics
+`mission_launch.py` selecciona SLAM o localizaciÃ³n con mapa guardado mediante Nav2 bringup. La fuente global de mapa y TF depende de ese modo. El explorador puede ser Python, C++ o ninguno.
 
-- **Alternative implementations:** C++ and Python exploration paths allow algorithm and performance comparisons.
-- **Separation of concerns:** mapping, planning, perception and mechanism support remain independently runnable.
-- **Mission-level abstraction:** custom nodes delegate motion safety and trajectory execution to Nav2.
-- **External-model isolation:** the detector is a submodule rather than copied into first-party package history.
-- **Reproducibility assets:** maps, robot models, data and diagrams are stored outside generated ROS directories.
+El explorador Python y el administrador de POIs comparten `autonomy_common.NavigationTask`. Este componente envÃ­a solicitudes asÃ­ncronas, procesa aceptaciÃ³n y resultados, y solicita cancelaciÃ³n al vencer el tiempo lÃ­mite. Mantiene la propiedad del objetivo hasta recibir un resultado terminal. El explorador C++ implementa el mismo contrato dentro de su ejecutor de un solo hilo.
 
-## 6. Integration limitations
+Solo un cliente de misiÃ³n debe estar activo. Este contrato evita superposiciones dentro de cada cliente; no impide que un operador o un cliente externo sustituya un objetivo en Nav2.
 
-- A complete build depends on ROS 2 Humble and system packages not installed by Python tooling alone.
-- The HAZMAT model assets and camera runtime are governed by the external submodule.
-- Some custom-mechanism utilities are operator-oriented prototypes and do not include a hardware feedback loop.
-- Hardware validation requires the matching TurtleBot3, sensors and mechanism.
+Las fronteras se agrupan por conectividad de ocho vecinos. El destino es una celda libre del grupo prÃ³xima a su centro, con margen de obstÃ¡culos conocidos. Se consideran el origen rotado del OccupancyGrid, los lÃ­mites de reintentos y las visitas confirmadas por Nav2. La utilidad resta una penalizaciÃ³n de distancia al Ã¡rea desconocida; no representa un coste de trayectoria calculado por el planificador.
+
+## Datos
+
+| Interfaz | Tipo | Contrato |
+|---|---|---|
+| `map` | `nav_msgs/OccupancyGrid` | Mapa planar vÃ¡lido en el marco global; suscripciÃ³n transitoria local |
+| `navigate_to_pose` | `nav2_msgs/action/NavigateToPose` | Nav2 activo y configurado para la base |
+| `scan` â†’ `adjusted_scan` | `sensor_msgs/LaserScan` | GeometrÃ­a coherente, QoS de sensores y reducciÃ³n opcional de rayos |
+| `hazmat_publisher` | `std_msgs/String` | Etiqueta recibida; `No detections` no genera observaciÃ³n |
+| `odom` | `nav_msgs/Odometry` | Pose sellada en `header.frame_id`, transformable al mapa |
+| `hazmat_markers` | `visualization_msgs/MarkerArray` | Conjunto acotado de ubicaciones de observaciÃ³n |
+| `motor1_position`, `motor2_position` | `std_msgs/Float32` | Referencias finitas en radianes, limitadas por URDF |
+| `joint_states` | `sensor_msgs/JointState` | RepresentaciÃ³n de referencias; no realimentaciÃ³n fÃ­sica |
+
+Los nombres son relativos y admiten remapeo ROS. `map_frame` y `robot_frame` se configuran mediante parÃ¡metros.
+
+## Responsabilidades fÃ­sicas
+
+Nav2 controla trayectorias y recuperaciÃ³n de la base. Los nodos de misiÃ³n no sustituyen el paro fÃ­sico. El mecanismo necesita un controlador de actuadores independiente. La anotaciÃ³n HAZMAT registra la posiciÃ³n del robot al recibir una etiqueta; localizar el objeto requiere informaciÃ³n geomÃ©trica adicional del sistema de percepciÃ³n.

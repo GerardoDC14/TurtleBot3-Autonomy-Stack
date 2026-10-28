@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import subprocess
 import sys
 from pathlib import Path
 from xml.etree import ElementTree
@@ -11,6 +12,7 @@ from xml.etree import ElementTree
 ROOT = Path(__file__).resolve().parents[1]
 
 FIRST_PARTY_PACKAGES = (
+    "autonomy_common",
     "explore_cpp",
     "turtlebot3_explore",
     "turtlebot3_poi_navigation",
@@ -57,13 +59,12 @@ def check_required_paths() -> list[str]:
 
 def check_generated_directories() -> list[str]:
     failures: list[str] = []
-    for path in ROOT.rglob("*"):
-        if not path.is_dir():
-            continue
-        if ".git" in path.parts or "HAZMAT_Detection" in path.parts:
-            continue
-        if path.name in FORBIDDEN_DIRECTORY_NAMES:
-            failures.append(f"generated directory is present: {path.relative_to(ROOT)}")
+    result = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True
+    )
+    for name in result.stdout.decode("utf-8").split("\0"):
+        if name and FORBIDDEN_DIRECTORY_NAMES.intersection(Path(name).parts):
+            failures.append(f"generated artifact is tracked: {name}")
     return failures
 
 

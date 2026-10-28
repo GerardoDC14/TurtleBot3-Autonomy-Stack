@@ -1,179 +1,96 @@
-<h1 align="center">TurtleBot3 Autonomy Stack</h1>
+# TurtleBot3 Autonomy Stack
 
-<p align="center">
-  <strong>Multi-package ROS 2 workspace for autonomous exploration, navigation, spatial perception and custom mechanism control.</strong>
-</p>
+Workspace de ROS 2 Humble para explorar con TurtleBot3, navegar a puntos de interÃ©s, registrar observaciones HAZMAT y visualizar un mecanismo de dos ejes.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/ROS%202-Humble-22314E?style=flat-square&logo=ros&logoColor=white" alt="ROS 2 Humble" />
-  <img src="https://img.shields.io/badge/navigation-Nav2-5C3EE8?style=flat-square" alt="Nav2" />
-  <img src="https://img.shields.io/badge/mapping-SLAM%20Toolbox-2F80ED?style=flat-square" alt="SLAM Toolbox" />
-  <img src="https://img.shields.io/badge/languages-C%2B%2B%20%7C%20Python-3776AB?style=flat-square" alt="C++ and Python" />
-  <img src="https://img.shields.io/badge/status-portfolio%20reference-lightgrey?style=flat-square" alt="Portfolio reference" />
-</p>
+El sistema delega la planificaciÃ³n y el movimiento de la base a Nav2. Las herramientas de mecanismo publican referencias de posiciÃ³n; requieren un controlador fÃ­sico independiente.
 
-## Overview
+## Requisitos
 
-This repository captures a complete early autonomy workspace built around TurtleBot3 and ROS 2. Rather than containing a single demo node, it integrates multiple implementations and supporting packages for:
+- Ubuntu 22.04 con ROS 2 Humble.
+- TurtleBot3 y sus paquetes de navegaciÃ³n, Nav2 y SLAM Toolbox.
+- Python 3, Git, rosdep y colcon.
+- Red ROS 2 configurada entre el robot y el equipo de operaciÃ³n.
+- Interfaz grÃ¡fica para administrar puntos de interÃ©s con Tk.
 
-- frontier-based exploration in both C++ and Python;
-- occupancy-grid mapping and Nav2 goal execution;
-- named point-of-interest navigation;
-- LaserScan normalization for downstream consumers;
-- camera-based HAZMAT detection and spatial map annotation;
-- custom motor-command and joint-state utilities for an attached mechanism;
-- reusable maps, robot models, experiment data and operator tooling.
-
-The project is preserved as a portfolio and technical reference. Its value is the system-level integration between perception, mapping, planning, mission logic and mechanism control—not only the individual nodes.
-
-## System architecture
-
-```mermaid
-flowchart LR
-    L[2D LiDAR] --> A[laser_scan_adjuster]
-    A --> S[SLAM Toolbox]
-    O[Odometry + TF] --> S
-    S --> M[(Occupancy grid)]
-
-    M --> E1[explore_cpp]
-    M --> E2[turtlebot3_explore]
-    O --> E1
-    O --> E2
-    E1 --> N[Nav2]
-    E2 --> N
-    P[turtlebot3_poi_navigation] --> N
-    N --> B[TurtleBot3 base]
-
-    C[RGB camera] --> H[HAZMAT detector submodule]
-    H --> HM[hazmat_marker]
-    HM --> V[RViz mission map]
-    M --> V
-
-    U[Operator commands] --> MC[motor_position_controller]
-    MC --> JS[joint_state_publisher_custom]
-    JS --> V
-```
-
-## Capability map
-
-| Capability | Implementation |
-|---|---|
-| Unknown-space exploration | Alternative C++ and Python frontier-exploration packages |
-| Mapping and localization | SLAM Toolbox, occupancy grids, odometry and TF integration |
-| Navigation | Nav2 goal execution and point-of-interest workflows |
-| Spatial perception | HAZMAT detection pipeline and map-space RViz markers |
-| Sensor adaptation | LaserScan length normalization with sensor-data QoS |
-| Mechanism interaction | Bounded two-axis position commands and custom joint-state publication |
-| Experiment support | Saved maps, URDF models, data sets, diagrams and standalone tools |
-
-## Workspace packages
-
-| Package | Language | Role |
-|---|---|---|
-| `explore_cpp` | C++ | Exploration node integrating occupancy grids, TF and Nav2 actions |
-| `turtlebot3_explore` | Python | Python exploration implementation for rapid algorithm iteration |
-| `turtlebot3_poi_navigation` | Python | Named point-of-interest storage and Nav2 goal dispatch |
-| `laser_scan_adjuster` | Python | Normalizes `/scan` samples and republishes `/adjusted_scan` |
-| `hazmat_marker` | Python | Publishes spatial HAZMAT annotations for RViz mission review |
-| `motor_position_controller` | Python | Interactive bounded position commands for two mechanism axes |
-| `joint_state_publisher_custom` | Python | Joint-state publication for custom-mechanism visualization |
-| `HAZMAT_Detection` | External submodule | Camera inference component maintained in its upstream repository |
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for package boundaries and data flow.
-
-## Repository layout
-
-```text
-.
-├── src/                         # First-party ROS 2 packages
-│   ├── explore_cpp/
-│   ├── turtlebot3_explore/
-│   ├── turtlebot3_poi_navigation/
-│   ├── laser_scan_adjuster/
-│   ├── hazmat_marker/
-│   ├── motor_position_controller/
-│   ├── joint_state_publisher_custom/
-│   └── HAZMAT_Detection/        # Git submodule
-├── maps/                        # Occupancy-grid assets
-├── models/                      # URDF and robot-model assets
-├── tools/                       # Repository and experiment utilities
-├── docs/                        # Architecture, operations and status
-└── data/                        # Experiment data retained for reference
-```
-
-## Quick start
-
-### Prerequisites
-
-- Ubuntu 22.04
-- ROS 2 Humble
-- TurtleBot3 packages
-- Nav2 and SLAM Toolbox
-- `colcon`, `rosdep` and Python 3
-- OpenCV and Eigen for the C++ exploration package
-- Tk and PyYAML for the POI interface
-
-### Clone and resolve dependencies
+## PreparaciÃ³n
 
 ```bash
-git clone --recurse-submodules https://github.com/GerardoDC14/TurtleBot3.git
-cd TurtleBot3
-
+git clone --recurse-submodules https://github.com/GerardoDC14/TurtleBot3-Autonomy-Stack.git
+cd TurtleBot3-Autonomy-Stack
 source /opt/ros/humble/setup.bash
-sudo rosdep init 2>/dev/null || true
+
+# Ejecuta rosdep init una vez por equipo, si todavÃ­a no estÃ¡ configurado.
+sudo rosdep init
 rosdep update
-rosdep install --from-paths src --ignore-src -r -y
-```
+rosdep install --from-paths src --ignore-src --rosdistro humble -y
 
-### Build
-
-```bash
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-### Representative mission flow
+Los ocho paquetes de `src/` forman el workspace principal. El detector externo se conserva en `external/HAZMAT_Detection`, con una revisiÃ³n fija y sus propios requisitos; `external/COLCON_IGNORE` lo excluye de la compilaciÃ³n predeterminada.
+
+## Primera misiÃ³n
+
+Inicia primero la base o el simulador y comprueba que publica `/scan`, `/odom` y TF. Selecciona el modelo fÃ­sico correcto:
 
 ```bash
-# Mapping
-ros2 launch slam_toolbox online_async_launch.py use_sim_time:=false
-
-# Navigation
-ros2 launch turtlebot3_navigation2 navigation2.launch.py \
-  use_sim_time:=false use_amcl:=true
-
-# Autonomous exploration
-ros2 launch turtlebot3_explore explore_launch.py
-
-# HAZMAT spatial annotation
-ros2 run hazmat_marker hazmat_marker
+export TURTLEBOT3_MODEL=burger
+ros2 launch turtlebot3_explore mission_launch.py \
+  mode:=slam model:=burger explorer:=none use_sim_time:=false
 ```
 
-Exact launch order depends on whether the robot, simulation, camera pipeline and custom mechanism are being used. See [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+Este comando inicia SLAM y Nav2 sin enviar objetivos de exploraciÃ³n. Comprueba el mapa, la posiciÃ³n y la huella del robot en RViz. Para iniciar la exploraciÃ³n en otra terminal:
 
-## Repository quality checks
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch turtlebot3_explore explore_launch.py use_sim_time:=false
+```
 
-A lightweight repository-health gate validates package metadata, checks first-party Python syntax and rejects generated ROS build directories:
+TambiÃ©n puedes iniciar una misiÃ³n completa con `explorer:=python` o `explorer:=cpp`. Usa un solo explorador o administrador de misiones a la vez. En simulaciÃ³n, establece `use_sim_time:=true` en todos los nodos.
+
+Para navegar sobre un mapa guardado, detÃ©n la misiÃ³n de SLAM e inicia:
+
+```bash
+ros2 launch turtlebot3_explore mission_launch.py \
+  mode:=localization model:=burger explorer:=none \
+  map:="$PWD/maps/mapLabB.yaml" use_sim_time:=false
+```
+
+En este modo, establece la pose inicial en RViz antes de enviar objetivos. El lanzador selecciona SLAM o localizaciÃ³n con AMCL; cada modo tiene una Ãºnica fuente del mapa y de la transformaciÃ³n global.
+
+## Componentes
+
+| Paquete | FunciÃ³n |
+|---|---|
+| `autonomy_common` | GestiÃ³n asÃ­ncrona de un objetivo Nav2, cancelaciÃ³n y tiempos lÃ­mite |
+| `turtlebot3_explore` | Explorador predeterminado en Python |
+| `explore_cpp` | Explorador alternativo en C++17 |
+| `turtlebot3_poi_navigation` | Interfaz de destinos nombrados y almacenamiento YAML |
+| `laser_scan_adjuster` | ValidaciÃ³n y reducciÃ³n opcional de muestras LaserScan |
+| `hazmat_marker` | Ubicaciones donde el robot recibiÃ³ una detecciÃ³n HAZMAT |
+| `motor_position_controller` | Referencias de posiciÃ³n acotadas por el URDF |
+| `joint_state_publisher_custom` | VisualizaciÃ³n de posiciones comandadas del mecanismo |
+
+## Comprobaciones
 
 ```bash
 python3 tools/repository_health.py
+python3 -B -m unittest discover -s tests -v
 ```
 
-The same check runs in GitHub Actions on pushes and pull requests. It intentionally does not claim hardware or full ROS integration validation; those require a configured ROS 2 environment and, for some workflows, physical hardware.
+Las pruebas locales de lÃ³gica requieren NumPy, SciPy y PyYAML. Las pruebas ROS requieren compilar y cargar el workspace. Para exigir que se ejecuten, sin omitirlas por falta de ROS:
 
-## Documentation
+```bash
+AUTONOMY_REQUIRE_ROS=1 python3 -B -m unittest discover -s tests -v
+```
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system boundaries and data flow
-- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — build and runtime workflows
-- [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) — maturity, provenance and known constraints
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution and validation expectations
+GitHub Actions comprueba el repositorio, compila los paquetes en Humble y ejecuta las pruebas con un servidor Nav2 simulado. Estas comprobaciones no validan sensores, movimiento real, precisiÃ³n del detector ni lÃ­mites mecÃ¡nicos fÃ­sicos.
 
-## Project status
+## GuÃ­as
 
-**Historical autonomy workspace maintained as a portfolio and engineering reference.**
-
-The repository reflects a formal early-stage robotics project and intentionally preserves alternative implementations, experimental utilities and custom hardware support. Current maintenance focuses on reproducibility, documentation and repository health rather than presenting every component as production-ready.
-
-## External component attribution
-
-`src/HAZMAT_Detection` is a Git submodule pointing to an external repository. Its history and license remain governed by that upstream project. The integration code and ROS 2 mission workflow in this repository are documented separately from the external detector.
+- [OperaciÃ³n, parÃ¡metros y precauciones](docs/OPERATIONS.md).
+- [Arquitectura e interfaces](docs/ARCHITECTURE.md).
+- [Alcance de validaciÃ³n y limitaciones](docs/PROJECT_STATUS.md).
+- [Contribuciones y pruebas](CONTRIBUTING.md).

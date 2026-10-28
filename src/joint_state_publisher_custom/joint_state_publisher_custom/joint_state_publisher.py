@@ -5,6 +5,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32
 from sensor_msgs.msg import JointState
 import threading
+import math
 
 class JointStatePublisher(Node):
     def __init__(self):
@@ -45,11 +46,17 @@ class JointStatePublisher(Node):
         self.get_logger().info('Joint State Publisher Node has been started.')
 
     def motor1_callback(self, msg):
+        if not math.isfinite(msg.data):
+            self.get_logger().warning('Discarding nonfinite motor 1 reference')
+            return
         with self.lock:
             self.joint_state.position[0] = msg.data
             self.get_logger().debug(f'Updated joint_motor_1_rotor position to {msg.data} rad')
 
     def motor2_callback(self, msg):
+        if not math.isfinite(msg.data):
+            self.get_logger().warning('Discarding nonfinite motor 2 reference')
+            return
         with self.lock:
             self.joint_state.position[1] = msg.data
             self.get_logger().debug(f'Updated joint_motor_2_rotor position to {msg.data} rad')
@@ -69,7 +76,7 @@ def main(args=None):
         node.get_logger().info('Joint State Publisher Node stopped cleanly.')
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 if __name__ == '__main__':
     main()
