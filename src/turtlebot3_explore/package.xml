@@ -13,12 +13,18 @@
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>
   <depend>tf2_ros</depend>
-  <depend>nav2_simple_commander</depend>
+  <depend>nav2_msgs</depend>
+  <depend>autonomy_common</depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>turtlebot3_navigation2</exec_depend>
 
   <exec_depend>python3</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-scipy</exec_depend>
-  <exec_depend>python3-sklearn</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

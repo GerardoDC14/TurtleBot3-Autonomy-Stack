@@ -1,8 +1,16 @@
 explore_node:
   ros__parameters:
     use_sim_time: false
-    minimum_goal_distance: 0.5
-    goal_reached_threshold: 0.3
-    frontier_cluster_epsilon: 0.5
-    frontier_cluster_min_samples: 5
-    max_retry_attempts: 10
+    info_radius: 1.0
+    frontier_visit_threshold: 0.3
+    max_attempts: 3
+    timer_interval: 2.0
+    min_frontier_size: 5
+    minimum_goal_distance: 0.3
+    clearance_radius: 0.2
+    free_threshold: 25
+    distance_weight: 0.5
+    navigation_timeout: 120.0
+    retry_cooldown: 10.0
+    map_frame: map
+    robot_frame: base_link
