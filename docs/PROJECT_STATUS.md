@@ -1,43 +1,29 @@
-# Project Status and Provenance
+# Estado y alcance de validaciÃ³n
 
-## Classification
+El workspace es un prototipo de autonomÃ­a para ROS 2 Humble y TurtleBot3. Su configuraciÃ³n de referencia utiliza Ubuntu 22.04.
 
-**Portfolio reference / historical integrated robotics workspace**
+| Componente | ValidaciÃ³n automatizada prevista |
+|---|---|
+| Metadatos y sintaxis | ComprobaciÃ³n independiente de ROS |
+| NavegaciÃ³n asÃ­ncrona | Resultados, rechazo, cancelaciÃ³n, tiempos lÃ­mite y aceptaciÃ³n tardÃ­a |
+| Fronteras y mapa | RotaciÃ³n del origen, lÃ­mites, agrupaciÃ³n y reintentos |
+| Sensores y visualizaciÃ³n | Escaneos, transformaciones HAZMAT y posiciones POI |
+| Mecanismo | Lectura del URDF, lÃ­mites y rechazo de valores no finitos |
+| Workspace Humble | ResoluciÃ³n de dependencias, compilaciÃ³n e importaciÃ³n |
+| Ejecutables Python y C++ | Servidor Nav2 simulado: Ã©xito, rechazo, aborto, tiempo lÃ­mite y cierre |
 
-This repository contains code from an early formal robotics project. It is intentionally presented as a multi-package system rather than rewritten into a fictional modern product.
+El resultado aplicable a una revisiÃ³n es el de su ejecuciÃ³n de GitHub Actions. Las pruebas sin ROS omiten explÃ­citamente la integraciÃ³n; `AUTONOMY_REQUIRE_ROS=1` convierte la falta de ROS en error.
 
-## Maturity matrix
+## Limitaciones operativas
 
-| Area | Status | Notes |
-|---|---|---|
-| Repository organization | Maintained | Generated ROS artifacts are excluded and first-party packages are grouped under `src/` |
-| Package metadata | Maintained | Maintainer, description and package-install metadata are normalized |
-| Autonomous exploration | Prototype / research implementation | C++ and Python alternatives are retained |
-| SLAM and Nav2 integration | Demonstrated workflow | Depends on the TurtleBot3 and ROS 2 runtime |
-| HAZMAT integration | Demonstrated integration | Inference lives in an external submodule |
-| POI navigation | Operator tool | Intended for named-goal workflows |
-| Scan adapter | Utility | Fixed-size scan normalization with sensor-data QoS |
-| Custom mechanism tools | Prototype | Command and visualization utilities, not safety-rated control |
-| CI | Repository-level | Metadata and Python syntax checks; not a full hardware build |
+- La geometrÃ­a, huella, velocidad y lÃ­mites deben corresponder al robot fÃ­sico.
+- Un objetivo libre en el mapa puede ser inalcanzable; Nav2 determina la trayectoria y el resultado.
+- Si se pierde comunicaciÃ³n durante una acciÃ³n, no se confirma la cancelaciÃ³n ni se garantiza el paro.
+- Los archivos POI pertenecen al marco y al mapa utilizados al crearlos.
+- Los marcadores HAZMAT describen ubicaciones de observaciÃ³n; no estiman la posiciÃ³n tridimensional del objeto ni certifican la detecciÃ³n.
+- El detector externo requiere cÃ¡mara, DeepHAZMAT, rutas de instalaciÃ³n y archivos de modelo. Su inferencia no estÃ¡ cubierta por las pruebas del workspace.
+- La visualizaciÃ³n del mecanismo utiliza referencias comandadas. Para control fÃ­sico se necesitan encoders, controlador y protecciÃ³n independientes.
 
-## Preserved historical characteristics
+## Componentes externos
 
-- Alternative implementations are retained instead of collapsed into one package.
-- Experiment maps, data and models remain part of the technical record.
-- The external HAZMAT detector remains a submodule with independent history.
-- Hardware-specific behavior is documented rather than generalized beyond available evidence.
-
-## Known limitations
-
-- The workspace has not been converted into a binary distribution or container image.
-- Full dependency resolution requires a ROS 2 Humble machine.
-- Hardware, camera and model availability affect end-to-end reproducibility.
-- Custom mechanism utilities do not verify physical actuator state.
-
-## Recommended future work
-
-1. Add rosbag-based reproducibility fixtures for mapping and marker workflows.
-2. Add launch tests for package composition.
-3. Parameterize scan size and topic names in `laser_scan_adjuster`.
-4. Add a common mission launch file that selects exactly one exploration implementation.
-5. Record representative RViz and map outputs under `docs/assets/`.
+`external/HAZMAT_Detection` fija una revisiÃ³n del repositorio de alonsorc9. Conserva su cÃ³digo, atribuciÃ³n y condiciones originales. Su presencia no aÃ±ade dependencias de inferencia al workspace principal.

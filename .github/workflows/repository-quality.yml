@@ -11,15 +11,47 @@ jobs:
   metadata-and-python:
     runs-on: ubuntu-22.04
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          submodules: false
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+          submodules: recursive
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+      - run: python3 tools/repository_health.py
+      - run: python3 -m pip install numpy scipy PyYAML
+      - name: Regression tests
+        run: python3 -B -m unittest discover -s tests -v
 
-      - name: Validate repository structure and package metadata
-        run: python3 tools/repository_health.py
+  ros-humble:
+    runs-on: ubuntu-22.04
+    container: ros:humble-ros-base-jammy
+    env:
+      ROS_DOMAIN_ID: "73"
+      ROS_LOCALHOST_ONLY: "1"
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y git python3-colcon-common-extensions python3-rosdep
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Resolve declared ROS dependencies
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then rosdep init; fi
+          rosdep update --rosdistro humble
+          rosdep install --from-paths src --ignore-src --rosdistro humble -y
+      - name: Build first-party packages
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --symlink-install --event-handlers console_direct+
+      - name: ROS runtime and regression tests
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/setup.bash
+          AUTONOMY_REQUIRE_ROS=1 python3 -B -m unittest discover -s tests -v
+          ros2 launch turtlebot3_explore mission_launch.py --show-args
