@@ -1,86 +1,116 @@
+"""Record robot observation locations in the map frame."""
+
+from collections import deque
+from copy import deepcopy
+import math
+
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 from std_msgs.msg import String
-from nav_msgs.msg import Odometry
+import tf2_geometry_msgs  # noqa: F401: register PoseStamped transformations
+from tf2_ros import Buffer, TransformListener, TransformException
 from visualization_msgs.msg import Marker, MarkerArray
-import tf_transformations
+
 
 class HazmatMarkerNode(Node):
+    """Annotate receipt-time observations; do not infer an object's position."""
+
     def __init__(self):
         super().__init__('hazmat_marker_node')
-        self.marker_pub = self.create_publisher(MarkerArray, '/hazmat_markers', 10)
-        self.hazmat_sub = self.create_subscription(String, '/hazmat_publisher', self.hazmat_callback, 10)
-        self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        self.current_position = None
-        self.hazmat_detected = False
-        self.hazmat_name = "No detections"
+        for name, value in (('map_frame', 'map'), ('max_pose_age', 0.5),
+                            ('min_separation', 0.5), ('max_observations', 200)):
+            self.declare_parameter(name, value)
+            setattr(self, name, self.get_parameter(name).value)
+        if (not math.isfinite(self.max_pose_age) or self.max_pose_age <= 0
+                or not math.isfinite(self.min_separation) or self.min_separation < 0
+                or self.max_observations < 1):
+            raise ValueError('invalid observation limits')
+        self.latest_odom = None
+        self.observations = deque(maxlen=self.max_observations)
+        self.next_id = 0
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
+        self.marker_pub = self.create_publisher(MarkerArray, 'hazmat_markers', qos)
+        self.hazmat_sub = self.create_subscription(
+            String, 'hazmat_publisher', self.hazmat_callback, 10)
+        self.odom_sub = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
 
-    def hazmat_callback(self, msg):
-        if msg.data != "No detections":
-            self.hazmat_detected = True
-            self.hazmat_name = msg.data
-        else:
-            self.hazmat_detected = False
+    def odom_callback(self, message):
+        """Cache pose only; stale detection flags cannot generate markers."""
+        self.latest_odom = message
 
-    def odom_callback(self, msg):
-        self.current_position = msg.pose.pose
-        if self.hazmat_detected:
-            self.add_marker()
+    def hazmat_callback(self, message):
+        name = message.data.strip()
+        if not name or name == 'No detections' or self.latest_odom is None:
+            return
+        odom = self.latest_odom
+        stamp = rclpy.time.Time.from_msg(odom.header.stamp)
+        age = (self.get_clock().now() - stamp).nanoseconds / 1e9
+        if not 0 <= age <= self.max_pose_age:
+            self.get_logger().warning('Observation discarded: odometry is stale or in the future',
+                                      throttle_duration_sec=5.0)
+            return
+        observation = PoseStamped()
+        observation.header = deepcopy(odom.header)
+        observation.pose = deepcopy(odom.pose.pose)
+        try:
+            # No blocking wait: the executor must remain available for TF updates.
+            mapped = self.tf_buffer.transform(observation, self.map_frame)
+        except TransformException as exc:
+            self.get_logger().warning(f'Observation discarded: {exc}', throttle_duration_sec=5.0)
+            return
+        coord = (mapped.pose.position.x, mapped.pose.position.y)
+        if not all(math.isfinite(value) for value in coord):
+            return
+        if any(old_name == name and math.dist(coord, (pose.pose.position.x, pose.pose.position.y))
+               <= self.min_separation for _, old_name, pose in self.observations):
+            return
+        self.observations.append((self.next_id, name, mapped))
+        self.next_id = (self.next_id + 1) % 2147483647
+        self.publish_observations()
 
-    def add_marker(self):
-        marker_array = MarkerArray()
-        
-        # Text Marker for Hazmat Name
-        text_marker = Marker()
-        text_marker.header.frame_id = "map"
-        text_marker.type = Marker.TEXT_VIEW_FACING
-        text_marker.action = Marker.ADD
-        text_marker.pose.position.x = self.current_position.position.x
-        text_marker.pose.position.y = self.current_position.position.y
-        text_marker.pose.position.z = 1.0
-        text_marker.pose.orientation = self.current_position.orientation
-        text_marker.scale.z = 0.2  # Reduced text size
-        text_marker.color.r = 1.0
-        text_marker.color.g = 0.0
-        text_marker.color.b = 0.0
-        text_marker.color.a = 1.0
-        text_marker.text = self.hazmat_name
-        text_marker.id = self.get_clock().now().to_msg().sec  # Unique ID
-        
-        marker_array.markers.append(text_marker)
-        
-        # Sphere Marker at Detection Point
-        sphere_marker = Marker()
-        sphere_marker.header.frame_id = "map"
-        sphere_marker.type = Marker.SPHERE
-        sphere_marker.action = Marker.ADD
-        sphere_marker.pose.position.x = self.current_position.position.x
-        sphere_marker.pose.position.y = self.current_position.position.y
-        sphere_marker.pose.position.z = 0.0  # Ground level
-        sphere_marker.pose.orientation.w = 1.0  # Neutral orientation
-        
-        # Adjust the size of the sphere
-        sphere_marker.scale.x = 0.1  # Diameter in meters
-        sphere_marker.scale.y = 0.1
-        sphere_marker.scale.z = 0.1
-        
-        sphere_marker.color.r = 0.0
-        sphere_marker.color.g = 1.0
-        sphere_marker.color.b = 0.0
-        sphere_marker.color.a = 1.0
-        sphere_marker.id = self.get_clock().now().to_msg().sec + 1  # Unique ID
-        
-        marker_array.markers.append(sphere_marker)
-        
-        # Publish markers
-        self.marker_pub.publish(marker_array)
+    def publish_observations(self):
+        """Publish a bounded, latched snapshot with distinct text/sphere keys."""
+        markers = MarkerArray()
+        clear = Marker()
+        clear.action = Marker.DELETEALL
+        markers.markers.append(clear)
+        for index, name, pose in self.observations:
+            for namespace, marker_type in (('hazmat_labels', Marker.TEXT_VIEW_FACING),
+                                           ('hazmat_observations', Marker.SPHERE)):
+                marker = Marker()
+                marker.header = deepcopy(pose.header)
+                marker.ns, marker.id = namespace, index
+                marker.type, marker.action = marker_type, Marker.ADD
+                marker.pose.position = deepcopy(pose.pose.position)
+                marker.pose.orientation.w = 1.0
+                marker.color.a = 1.0
+                if marker_type == Marker.TEXT_VIEW_FACING:
+                    marker.pose.position.z += 1.0
+                    marker.scale.z, marker.color.r = 0.2, 1.0
+                    marker.text = f'Observed: {name}'
+                else:
+                    marker.scale.x = marker.scale.y = marker.scale.z = 0.1
+                    marker.color.g = 1.0
+                markers.markers.append(marker)
+        self.marker_pub.publish(markers)
+
 
 def main(args=None):
     rclpy.init(args=args)
     node = HazmatMarkerNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
 
 if __name__ == '__main__':
     main()
